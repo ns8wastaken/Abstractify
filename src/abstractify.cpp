@@ -1,15 +1,47 @@
 #include "abstractify.hpp"
 
 
-Abstractify::Abstractify(
-    const Image& originalImage,
-    const Texture& originalImageTexture,
-    const Color startingBackgroundColor,
-    const Vector2* screenResolution
-)
+void Abstractify::Shape::mutate(const Vector2& imageSize)
+{
+    switch (type) {
+        case 1: { // Circle
+            switch (GetRandomValue(0, 1)) {
+                case 0: {
+                    data[0] = Clamp(data[0] + GetRandomValue(-Settings::MAX_MUTATION_VAL, Settings::MAX_MUTATION_VAL), 0, static_cast<int>(imageSize.x) - 1);
+                    data[1] = Clamp(data[1] + GetRandomValue(-Settings::MAX_MUTATION_VAL, Settings::MAX_MUTATION_VAL), 0, static_cast<int>(imageSize.y) - 1);
+                } break;
+
+                case 1: {
+                    data[2] = Clamp(data[2] + GetRandomValue(-Settings::MAX_MUTATION_VAL, Settings::MAX_MUTATION_VAL), Settings::MIN_CIRCLE_RADIUS, Settings::MAX_CIRCLE_RADIUS);
+                } break;
+            }
+        } break;
+
+        case 2: { // Ellipse
+        } break;
+
+        case 4: { // Square
+        } break;
+
+        case 8: { // Rectangle
+        } break;
+
+        case 16: { // Triangle
+        } break;
+
+        case 32: { // Line
+        } break;
+
+        case 64: { // Curve
+        } break;
+    }
+}
+
+
+Abstractify::Abstractify(const Image& originalImage, const Texture& originalImageTexture, const Color startingBackgroundColor)
     : m_originalImage(originalImage),
       m_originalTexture(originalImageTexture),
-      m_diffShader(LoadShader(0, "src/shaders/diff_calc.frag")),
+      m_imageSize(Vector2{ static_cast<float>(m_originalImage.width), static_cast<float>(m_originalImage.height) }),
       m_shapeShader(ShapeShader{
           .Circle    = LoadShader(0, "src/shaders/circle.frag"),
           .Ellipse   = LoadShader(0, "src/shaders/ellipse.frag"),
@@ -18,7 +50,9 @@ Abstractify::Abstractify(
           .Triangle  = LoadShader(0, "src/shaders/triangle.frag"),
           .Line      = LoadShader(0, "src/shaders/line.frag"),
           .Curve     = LoadShader(0, "src/shaders/curve.frag") }
-      )
+      ),
+      m_diffComputeShader("src/shaders/diff_calc.comp"),
+      m_colorComputeShader("src/shaders/color_calc.comp")
 {
     // Generate blank texture
     Image img      = GenImageColor(originalImage.width, originalImage.height, BLANK);
@@ -34,14 +68,19 @@ Abstractify::Abstractify(
     ClearBackground(startingBackgroundColor);
     EndTextureMode();
 
-    m_screenResolution = screenResolution;
+    unsigned int result = 0;
+    m_diffComputeShader.AddSSBO(&result, sizeof(result));
+
+    unsigned int rgbaSum[5];
+    int shapeData[8];
+    m_colorComputeShader.AddSSBO(rgbaSum, sizeof(rgbaSum));
+    m_colorComputeShader.AddSSBO(shapeData, sizeof(shapeData));
 }
 
 
 void Abstractify::UnloadData()
 {
     // Shaders
-    UnloadShader(m_diffShader);
     UnloadShader(m_shapeShader.Circle);
     UnloadShader(m_shapeShader.Ellipse);
     UnloadShader(m_shapeShader.Square);
@@ -49,6 +88,10 @@ void Abstractify::UnloadData()
     UnloadShader(m_shapeShader.Triangle);
     UnloadShader(m_shapeShader.Line);
     UnloadShader(m_shapeShader.Curve);
+
+    // Compute shader
+    m_diffComputeShader.Unload();
+    m_colorComputeShader.Unload();
 
     // Results
     UnloadRenderTexture(m_resultRenderTexture);
@@ -69,123 +112,136 @@ void Abstractify::SetShapesFlags(int shapesFlag)
 const Texture& Abstractify::GetTexture()
 {
     return m_resultRenderTexture.texture;
+    // return m_shapeCanvasRenderTexture.texture;
 }
 
 
-void Abstractify::AddShape(int sampleCount)
+void Abstractify::AddShape(int lifetime)
 {
-    Shape bestShape;
-    bestShape.score = std::numeric_limits<uint64_t>::max();
+    Shape bestShape    = m_GetRandomShape();
+    uint32_t bestScore = std::numeric_limits<uint32_t>::max();
 
-    for (int j = 0; j < sampleCount; ++j) {
-        // TODO: Generate random shape
-        Vector2 position = {
-            (float)GetRandomValue(0, m_originalImage.width),
-            (float)GetRandomValue(0, m_originalImage.height)
-        };
+    int age = 0;
+    while (age < lifetime) {
+        Shape tempShape = bestShape;
 
-        int radius = GetRandomValue(5, 200);
+        tempShape.mutate(m_imageSize);
 
-        Color color = {
-            (unsigned char)GetRandomValue(0, 255),
-            (unsigned char)GetRandomValue(0, 255),
-            (unsigned char)GetRandomValue(0, 255),
-            255
-        };
+        tempShape.color   = m_ComputeColor(tempShape);
+        tempShape.color.a = 180;
 
-        // Shape shape = m_GetRandomShape();
-
-        // Clear m_shapeCanvasRenderTexture background and draw shape on it
         BeginTextureMode(m_shapeCanvasRenderTexture);
         ClearBackground(BLANK);
-        DrawTexture(m_resultRenderTexture.texture, 0, 0, BLANK);
-        // DrawCircleV(Vector2{ static_cast<float>(shape.data[0]), static_cast<float>(shape.data[1]) }, shape.data[2], shape.color);
-        DrawCircleV(position, radius, color);
+        DrawTexture(m_resultRenderTexture.texture, 0, 0, WHITE);
         EndTextureMode();
-        // m_DrawShape(m_resultRenderTexture, shape);
 
-        uint64_t score = m_ComputeScore(m_shapeCanvasRenderTexture.texture);
-        // uint64_t score = 0;
-        // printf("Score: %d\n", score);
+        m_DrawShape(m_shapeCanvasRenderTexture, tempShape);
 
-        // if (score < bestShape.score) {
-        //     bestShape.type  = shape.type;
-        //     bestShape.score = score;
-        //     bestShape.color = shape.color;
-        //     std::memcpy(bestShape.data, shape.data, sizeof(shape.data));
-        // }
-        if (score < bestShape.score) {
-            bestShape.type    = ShapeType::Circle;
-            bestShape.score   = score;
-            bestShape.color   = color;
-            bestShape.data[0] = position.x;
-            bestShape.data[1] = position.y;
-            bestShape.data[2] = radius;
+        const uint32_t score = m_ComputeScore(m_shapeCanvasRenderTexture.texture);
+
+        if (score < bestScore) {
+            bestShape = tempShape;
+            bestScore = score;
+            age       = -1;
         }
+
+        ++age;
     }
 
     m_DrawShape(m_resultRenderTexture, bestShape);
 }
 
 
-uint64_t Abstractify::m_ComputeScore(const Texture& otherTexture)
+uint32_t Abstractify::m_ComputeScore(const Texture& otherTexture)
 {
-    // Clear m_diffRenderTexture background
-    BeginTextureMode(m_diffRenderTexture);
-    ClearBackground(BLANK);
-    EndTextureMode();
+    uint32_t result = 0;
 
-    // Draw the difference of colors to m_diffRenderTexture
-    BeginTextureMode(m_diffRenderTexture);
+    rlEnableShader(m_diffComputeShader.program);
     {
-        ClearBackground(BLANK);
+        m_diffComputeShader.UpdateSSBO(0, &result, sizeof(result));  // Reset SSBO
 
-        BeginShaderMode(m_diffShader);
-        {
-            SetShaderValueTexture(m_diffShader, GetShaderLocation(m_diffShader, "tex0"), m_originalTexture);
-            SetShaderValueTexture(m_diffShader, GetShaderLocation(m_diffShader, "tex1"), otherTexture);
+        int size[2] = { m_originalTexture.width, m_originalTexture.height };
+        rlSetUniform(rlGetLocationUniform(m_diffComputeShader.program, "resolution"), size, SHADER_UNIFORM_IVEC2, 1);
 
-            DrawTexture(m_blankTexture, 0, 0, BLANK);
-        }
-        EndShaderMode();
+        // Bind textures
+        rlBindImageTexture(m_originalTexture.id, 0, m_originalTexture.format, true);
+        rlBindImageTexture(otherTexture.id, 1, otherTexture.format, true);
+
+        // Bind SSBO
+        rlBindShaderBuffer(m_diffComputeShader.ssbos[0], 2);
+
+        // Dispatch compute shader
+        rlComputeShaderDispatch((m_originalTexture.width + 15) / 16, (m_originalTexture.height + 15) / 16, 1);
     }
-    EndTextureMode();
+    rlDisableShader();
 
-    // Get diff image + pixel colors
-    Image diffImage   = LoadImageFromTexture(m_diffRenderTexture.texture);
-    Color* diffPixels = LoadImageColors(diffImage);
+    // Read result from SSBO
+    rlReadShaderBuffer(m_diffComputeShader.ssbos[0], &result, sizeof(result), 0);
 
-    // Calculate score
-    uint64_t score = 0;
-    for (int i = 0; i < diffImage.width * diffImage.height; i++) {
-        score += diffPixels[i].r;
-    }
-
-    UnloadImageColors(diffPixels);
-    UnloadImage(diffImage);
-
-    return score;
+    return result;
 }
 
-// TODO
+
+Color Abstractify::m_ComputeColor(const Shape& shape)
+{
+    unsigned int data[5] = { 0, 0, 0, 0, 0 }; // { r, g, b, a, pixelCount }
+
+    rlEnableShader(m_colorComputeShader.program);
+    {
+        // Reset / set SSBOs
+        m_colorComputeShader.UpdateSSBO(0, data, sizeof(data));
+        m_colorComputeShader.UpdateSSBO(1, shape.data, sizeof(shape.data));
+
+        // Set uniforms
+        int size[2] = { m_originalTexture.width, m_originalTexture.height };
+        rlSetUniform(rlGetLocationUniform(m_colorComputeShader.program, "shapeType"), &shape.type, SHADER_UNIFORM_INT, 1);
+        rlSetUniform(rlGetLocationUniform(m_colorComputeShader.program, "resolution"), size, SHADER_UNIFORM_IVEC2, 1);
+
+        // Bind m_originalTexture
+        rlBindImageTexture(m_originalTexture.id, 0, m_originalTexture.format, true);
+
+        // Bind SSBOs
+        rlBindShaderBuffer(m_colorComputeShader.ssbos[0], 1);
+        rlBindShaderBuffer(m_colorComputeShader.ssbos[1], 2);
+
+        // Dispatch compute shader
+        rlComputeShaderDispatch((m_originalTexture.width + 15) / 16, (m_originalTexture.height + 15) / 16, 1);
+    }
+    rlDisableShader();
+
+    // Read result from SSBO
+    rlReadShaderBuffer(m_colorComputeShader.ssbos[0], data, sizeof(data), 0);
+
+    return Color{
+        static_cast<uint8_t>(data[0] / data[4]),
+        static_cast<uint8_t>(data[1] / data[4]),
+        static_cast<uint8_t>(data[2] / data[4]),
+        static_cast<uint8_t>(data[3] / data[4])
+    };
+}
+
+
 void Abstractify::m_DrawShape(RenderTexture& target, const Shape& shape)
 {
+    BeginTextureMode(target);
+
     switch (shape.type) {
         case ShapeType::Circle: {
             Vector2 pos = { static_cast<float>(shape.data[0]), static_cast<float>(shape.data[1]) };
             SetShaderValue(m_shapeShader.Circle, GetShaderLocation(m_shapeShader.Circle, "position"), &pos, SHADER_UNIFORM_VEC2);
             SetShaderValue(m_shapeShader.Circle, GetShaderLocation(m_shapeShader.Circle, "radius"), &shape.data[2], SHADER_UNIFORM_INT);
 
-            BeginTextureMode(target);
             {
                 BeginShaderMode(m_shapeShader.Circle);
                 DrawTexture(m_blankTexture, 0, 0, shape.color);
                 EndShaderMode();
             }
-            EndTextureMode();
         } break;
 
         case ShapeType::Ellipse: {
+        } break;
+
+        case ShapeType::Square: {
         } break;
 
         case ShapeType::Rectangle: {
@@ -195,13 +251,11 @@ void Abstractify::m_DrawShape(RenderTexture& target, const Shape& shape)
             SetShaderValue(m_shapeShader.Rectangle, GetShaderLocation(m_shapeShader.Rectangle, "position"), &pos, SHADER_UNIFORM_VEC2);
             SetShaderValue(m_shapeShader.Rectangle, GetShaderLocation(m_shapeShader.Rectangle, "size"), &size, SHADER_UNIFORM_VEC2);
 
-            BeginTextureMode(m_resultRenderTexture);
             {
                 BeginShaderMode(m_shapeShader.Rectangle);
                 DrawTexture(m_blankTexture, 0, 0, shape.color);
                 EndShaderMode();
             }
-            EndTextureMode();
         } break;
 
         case ShapeType::Triangle: {
@@ -213,13 +267,11 @@ void Abstractify::m_DrawShape(RenderTexture& target, const Shape& shape)
             SetShaderValue(m_shapeShader.Triangle, GetShaderLocation(m_shapeShader.Triangle, "v2"), &v2, SHADER_UNIFORM_VEC2);
             SetShaderValue(m_shapeShader.Triangle, GetShaderLocation(m_shapeShader.Triangle, "v3"), &v3, SHADER_UNIFORM_VEC2);
 
-            BeginTextureMode(target);
             {
                 BeginShaderMode(m_shapeShader.Triangle);
                 DrawTexture(m_blankTexture, 0, 0, shape.color);
                 EndShaderMode();
             }
-            EndTextureMode();
         } break;
 
         case ShapeType::Line: {
@@ -228,33 +280,14 @@ void Abstractify::m_DrawShape(RenderTexture& target, const Shape& shape)
         case ShapeType::Curve: {
         } break;
     }
-}
 
-
-Texture Abstractify::m_GetTextureDifference(const Texture& originalTexture, const Texture& otherTexture)
-{
-    RenderTexture diffTexture = LoadRenderTexture(originalTexture.width, originalTexture.height);
-
-    BeginTextureMode(diffTexture);
-    {
-        BeginShaderMode(m_diffShader);
-
-        SetShaderValueTexture(m_diffShader, GetShaderLocation(m_diffShader, "tex0"), originalTexture);
-        SetShaderValueTexture(m_diffShader, GetShaderLocation(m_diffShader, "tex1"), otherTexture);
-
-        DrawTexture(originalTexture, 0, 0, BLANK);
-        EndShaderMode();
-    }
     EndTextureMode();
-
-    UnloadShader(m_diffShader);
-
-    return diffTexture.texture;
 }
 
 
 Abstractify::Shape Abstractify::m_GetRandomShape()
 {
+    // TODO: Get usableShapeTypes once instead of every frame
     std::vector<ShapeType> usableShapeTypes = {};
 
     for (int i = 0; i < 8; ++i) {
@@ -263,63 +296,74 @@ Abstractify::Shape Abstractify::m_GetRandomShape()
         }
     }
 
+    // printf("Usable shape types:\n");
+    // for (ShapeType i : usableShapeTypes)
+    //     printf("%d\n", static_cast<int>(i));
+    // printf("\n");
+
     Shape shape = {};
 
     switch (usableShapeTypes[GetRandomValue(0, usableShapeTypes.size() - 1)]) {
         case ShapeType::Circle: {
-            shape.type = ShapeType::Circle;
-
-            shape.data[0] = GetRandomValue(-SCREEN_MARGIN, m_screenResolution->x + SCREEN_MARGIN);
-            shape.data[1] = GetRandomValue(-SCREEN_MARGIN, m_screenResolution->y + SCREEN_MARGIN);
-            shape.data[2] = GetRandomValue(10, std::min(m_screenResolution->x, m_screenResolution->y) / 2);
+            shape.type    = ShapeType::Circle;
+            shape.data[0] = GetRandomValue(0, m_originalImage.width);
+            shape.data[1] = GetRandomValue(0, m_originalImage.height);
+            // shape.data[2] = GetRandomValue(10, std::min(m_originalImage.width, m_originalImage.height) / 2);
+            shape.data[2] = GetRandomValue(Settings::MIN_CIRCLE_RADIUS, Settings::MAX_CIRCLE_RADIUS);
 
             shape.dataSize = 3;
 
             shape.color = Color{
                 static_cast<uint8_t>(GetRandomValue(0, 255)),
                 static_cast<uint8_t>(GetRandomValue(0, 255)),
-                static_cast<uint8_t>(GetRandomValue(0, 255))
+                static_cast<uint8_t>(GetRandomValue(0, 255)),
+                200
             };
         } break;
 
         case ShapeType::Ellipse: {
         } break;
 
+        case ShapeType::Square: {
+        } break;
+
         case ShapeType::Rectangle: {
             shape.type = ShapeType::Rectangle;
 
-            shape.data[0] = GetRandomValue(-SCREEN_MARGIN, m_screenResolution->x + SCREEN_MARGIN);
-            shape.data[1] = GetRandomValue(-SCREEN_MARGIN, m_screenResolution->y + SCREEN_MARGIN);
-            shape.data[2] = GetRandomValue(10, std::min(m_screenResolution->x, m_screenResolution->y) / 2);
-            shape.data[3] = GetRandomValue(10, std::min(m_screenResolution->x, m_screenResolution->y) / 2);
+            shape.data[0] = GetRandomValue(0, m_originalImage.width);
+            shape.data[1] = GetRandomValue(0, m_originalImage.height);
+            shape.data[2] = GetRandomValue(10, std::min(m_originalImage.width, m_originalImage.height) / 2);
+            shape.data[3] = GetRandomValue(10, std::min(m_originalImage.width, m_originalImage.height) / 2);
 
             shape.dataSize = 4;
 
             shape.color = Color{
                 static_cast<uint8_t>(GetRandomValue(0, 255)),
                 static_cast<uint8_t>(GetRandomValue(0, 255)),
-                static_cast<uint8_t>(GetRandomValue(0, 255))
+                static_cast<uint8_t>(GetRandomValue(0, 255)),
+                200
             };
         } break;
 
         case ShapeType::Triangle: {
             shape.type = ShapeType::Triangle;
 
-            shape.data[0] = GetRandomValue(-SCREEN_MARGIN, m_screenResolution->x + SCREEN_MARGIN);
-            shape.data[1] = GetRandomValue(-SCREEN_MARGIN, m_screenResolution->y + SCREEN_MARGIN);
+            shape.data[0] = GetRandomValue(0, m_originalImage.width);
+            shape.data[1] = GetRandomValue(0, m_originalImage.height);
 
-            shape.data[2] = GetRandomValue(-SCREEN_MARGIN, m_screenResolution->x + SCREEN_MARGIN);
-            shape.data[3] = GetRandomValue(-SCREEN_MARGIN, m_screenResolution->y + SCREEN_MARGIN);
+            shape.data[2] = GetRandomValue(0, m_originalImage.width);
+            shape.data[3] = GetRandomValue(0, m_originalImage.height);
 
-            shape.data[4] = GetRandomValue(-SCREEN_MARGIN, m_screenResolution->x + SCREEN_MARGIN);
-            shape.data[5] = GetRandomValue(-SCREEN_MARGIN, m_screenResolution->y + SCREEN_MARGIN);
+            shape.data[4] = GetRandomValue(0, m_originalImage.width);
+            shape.data[5] = GetRandomValue(0, m_originalImage.height);
 
             shape.dataSize = 6;
 
             shape.color = Color{
                 static_cast<uint8_t>(GetRandomValue(0, 255)),
                 static_cast<uint8_t>(GetRandomValue(0, 255)),
-                static_cast<uint8_t>(GetRandomValue(0, 255))
+                static_cast<uint8_t>(GetRandomValue(0, 255)),
+                200
             };
         } break;
 

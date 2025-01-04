@@ -1,4 +1,4 @@
-#version 330
+#version 430
 
 // Input vertex attributes (from vertex shader)
 in vec2 fragTexCoord;
@@ -15,8 +15,7 @@ out vec4 finalColor;
 vec4 Circle(vec2 uv, vec2 pos, float rad, vec4 color)
 {
     float dist = length(pos - uv) - rad;
-    float t = step(dist, 1.0);
-    return vec4(color.rgb, color.a * t);
+    return color * step(dist, 1.0);
 }
 
 void main()
