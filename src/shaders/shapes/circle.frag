@@ -12,13 +12,14 @@ uniform int radius;
 out vec4 finalColor;
 
 // Draw a circle at vec2 `pos` with radius `rad` and color `color`.
-vec4 Circle(vec2 uv, vec2 pos, float rad, vec4 color)
-{
-    float dist = length(pos - uv) - rad;
-    return color * step(dist, 1.0);
-}
+// vec4 Circle(vec2 uv, vec2 pos, float rad, vec4 color)
+// {
+//     float dist = length(pos - uv) - rad;
+//     return color * step(dist, 1.0);
+// }
 
 void main()
 {
-    finalColor = Circle(gl_FragCoord.xy, position, radius, fragColor);
+    // finalColor = Circle(gl_FragCoord.xy, position, radius, fragColor);
+    finalColor = fragColor * step(length(position - gl_FragCoord.xy) - radius, 1.0);
 }

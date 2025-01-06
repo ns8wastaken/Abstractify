@@ -1,4 +1,5 @@
 #version 430
+#extension GL_NV_shader_atomic_float : require
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
@@ -7,7 +8,7 @@ layout(rgba8, binding = 1) readonly uniform image2D image2;
 
 // Output buffer for the computed difference
 layout(std430, binding = 2) buffer OutputBuffer {
-    uint result;
+    float rgbaSum;
 };
 
 uniform ivec2 resolution; // Image resolution
@@ -22,9 +23,9 @@ void main() {
     vec4 color2 = imageLoad(image2, coords);
 
     // Compute the pixel difference
-    vec4 diff = abs(color1 - color2);
-    uint pixelDiff = uint(sqrt(dot(diff, diff) / 4.0) * 255.0);
+    vec4 diff = abs(color1 - color2) * 255.0;
+    float squaredDiff = dot(diff, diff);
 
-    // Atomic addition to accumulate the result
-    atomicAdd(result, pixelDiff);
+    // Atomic addition to accumulate the rgbaSum
+    atomicAdd(rgbaSum, squaredDiff);
 }

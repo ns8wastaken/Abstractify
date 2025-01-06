@@ -22,16 +22,15 @@ void main() {
 
     switch (shapeType) {
         case 1:  { // Circle
-            vec2 pixelPos = vec2(coords) + 0.5;
-            float dist = distance(pixelPos, vec2(shapeData[0], shapeData[1])) - float(shapeData[2]);
+            float dist = distance(coords, vec2(shapeData[0], shapeData[1])) - float(shapeData[2]);
 
             if (dist <= 0.0) {
-                vec4 color = imageLoad(inputImage, coords);
+                vec4 color = imageLoad(inputImage, coords) * 255.0;
 
-                atomicAdd(rgbaSum[0], uint(color.r * 255.0));
-                atomicAdd(rgbaSum[1], uint(color.g * 255.0));
-                atomicAdd(rgbaSum[2], uint(color.b * 255.0));
-                atomicAdd(rgbaSum[3], uint(color.a * 255.0));
+                atomicAdd(rgbaSum[0], uint(color.r));
+                atomicAdd(rgbaSum[1], uint(color.g));
+                atomicAdd(rgbaSum[2], uint(color.b));
+                atomicAdd(rgbaSum[3], uint(color.a));
 
                 atomicAdd(rgbaSum[4], 1u);
             }
