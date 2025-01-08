@@ -1,4 +1,5 @@
 #include "rng.hpp"
+#include <raylib.h>
 
 
 int RNG::getRandomInt(int max)

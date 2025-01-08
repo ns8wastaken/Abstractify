@@ -1,3 +1,6 @@
+#pragma once
+
+
 template <typename T>
 constexpr T Clamp(const T& v, const T& lo, const T& hi)
 {

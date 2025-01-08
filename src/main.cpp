@@ -1,8 +1,9 @@
 #include <raylib.h>
 #include <iostream>
 
-#include "abstractify.cpp"
 #include "rng.cpp"
+#include "shape.cpp"
+#include "abstractify.cpp"
 
 
 #define MIN_CAMERA_ZOOM 0.01f
@@ -21,7 +22,7 @@ int main()
     Texture texture = LoadTextureFromImage(image);
 
     Abstractify abstractify(image, texture);
-    abstractify.SetShapesFlags(Abstractify::ShapeType::Circle);
+    abstractify.SetShapesFlags(Abstractify::ShapeFlag::Circle);
 
     Camera2D camera = {};
     camera.offset   = Vector2{ screenResolution.x / 2, screenResolution.y / 2 };

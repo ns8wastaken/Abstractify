@@ -8,6 +8,7 @@
 #include "utils/comp_funcs.hpp"
 #include "compute_shader.hpp"
 #include "rng.hpp"
+#include "shape.hpp"
 
 
 class Abstractify
@@ -22,7 +23,7 @@ public:
 
     void UnloadData();
 
-    enum ShapeType
+    enum ShapeFlag
     {
         Circle    = 1,
         Ellipse   = 2,
@@ -34,43 +35,6 @@ public:
     };
 
 private:
-    typedef struct Settings
-    {
-        // General
-        static constexpr inline int MAX_MUTATION_VAL = 16;  // Max amount of change per mutation (x ± MAX_MUTATION_OFFSET)
-        static constexpr inline uint8_t SHAPE_ALPHA  = 128;
-
-        // Circle
-        static constexpr inline int MIN_CIRCLE_RADIUS = 1;
-        static constexpr inline int MAX_CIRCLE_RADIUS = 1000;
-
-        // Square
-        static constexpr inline int MIN_SQUARE_SIZE = 10;
-        static constexpr inline int MAX_SQUARE_SIZE = 150;
-    } Settings;
-
-    /*
-     *  Shape data layouts
-     *  @param Circle    [ centerPosX, centerPosY, radius ]
-     *  @param Ellipse   [ centerPosX, centerPosY, ... ] TODO: Ellipse data
-     *  @param Square    [ topLeftX, topLeftY, size ]
-     *  @param Rectangle [ topLeftX, topLeftY, width, height ]
-     *  @param Triangle  [ v1PosX, v1PoxY, v2PoxX, v2PosY, v3PosX, v3PosY ]
-     *  @param Line      [ startPosX, startPosY, endPosX, endPosY, width ]
-     *  @param Curve     [ ... ] TODO: Curve data
-     */
-    struct Shape
-    {
-        ShapeType type;
-        uint32_t score;
-
-        Color color;
-        int data[8];      // Usage varies based on shape type
-        size_t dataSize;  // Amount of data used (3 for circle)
-
-        void mutate(const Vector2& imageSize, RNG& rng);
-    };
-
     RNG m_RNG;
 
     uint8_t m_usableShapesFlag = 0;

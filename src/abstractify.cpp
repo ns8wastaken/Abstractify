@@ -1,51 +1,6 @@
 #include "abstractify.hpp"
 
 
-void Abstractify::Shape::mutate(const Vector2& imageSize, RNG& rng)
-{
-    static auto mutate = [&imageSize, &rng](int& originalValue, const int& lo, const int& hi) {
-        originalValue = Clamp(
-            originalValue + rng.getRandomInt(-Settings::MAX_MUTATION_VAL, Settings::MAX_MUTATION_VAL),
-            lo,
-            hi
-        );
-    };
-
-    switch (this->type) {
-        case ShapeType::Circle: {
-            if (rng.getRandomInt(1)) {
-                // this->data[0] = Clamp(this->data[0] + rng.getRandomInt(-Settings::MAX_MUTATION_VAL, Settings::MAX_MUTATION_VAL), 0, static_cast<int>(imageSize.x) - 1);
-                // this->data[1] = Clamp(this->data[1] + rng.getRandomInt(-Settings::MAX_MUTATION_VAL, Settings::MAX_MUTATION_VAL), 0, static_cast<int>(imageSize.y) - 1);
-                mutate(this->data[0], 0, static_cast<int>(imageSize.x) - 1);
-                mutate(this->data[1], 0, static_cast<int>(imageSize.y) - 1);
-            }
-            else {
-                // this->data[2] = Clamp(this->data[2] + rng.getRandomInt(-Settings::MAX_MUTATION_VAL, Settings::MAX_MUTATION_VAL), Settings::MIN_CIRCLE_RADIUS, Settings::MAX_CIRCLE_RADIUS);
-                mutate(this->data[2], Settings::MIN_CIRCLE_RADIUS, Settings::MAX_CIRCLE_RADIUS);
-            }
-        } break;
-
-        case ShapeType::Ellipse: {
-        } break;
-
-        case ShapeType::Square: {
-        } break;
-
-        case ShapeType::Rectangle: {
-        } break;
-
-        case ShapeType::Triangle: {
-        } break;
-
-        case ShapeType::Line: {
-        } break;
-
-        case ShapeType::Curve: {
-        } break;
-    }
-}
-
-
 Abstractify::Abstractify(const Image& originalImage, const Texture& originalImageTexture)
     : m_originalImage(originalImage),
       m_originalTexture(originalImageTexture),
@@ -238,7 +193,7 @@ Color Abstractify::m_ComputeColor(const Shape& shape)
         static_cast<uint8_t>(data[1] / data[4]),
         static_cast<uint8_t>(data[2] / data[4]),
         // static_cast<uint8_t>(data[3] / data[4])
-        Settings::SHAPE_ALPHA
+        SHAPE_ALPHA
     };
 }
 
@@ -295,13 +250,15 @@ void Abstractify::m_DrawShape(RenderTexture& target, const Shape& shape)
 
         case ShapeType::Curve: {
         } break;
+
+        default: std::__throw_runtime_error("Failed to draw shape.");
     }
 
     EndTextureMode();
 }
 
 
-Abstractify::Shape Abstractify::m_GetRandomShape()
+Shape Abstractify::m_GetRandomShape()
 {
     // TODO: Get usableShapeTypes once instead of every frame
     std::vector<ShapeType> usableShapeTypes = {};
@@ -318,76 +275,7 @@ Abstractify::Shape Abstractify::m_GetRandomShape()
     // printf("\n");
 
     Shape shape = {};
-
-    switch (usableShapeTypes[GetRandomValue(0, usableShapeTypes.size() - 1)]) {
-        case ShapeType::Circle: {
-            shape.type    = ShapeType::Circle;
-            shape.data[0] = m_RNG.getRandomInt(m_originalImage.width - 1);
-            shape.data[1] = m_RNG.getRandomInt(m_originalImage.height - 1);
-            shape.data[2] = m_RNG.getRandomInt(Settings::MIN_CIRCLE_RADIUS, Settings::MAX_CIRCLE_RADIUS);
-
-            shape.dataSize = 3;
-
-            shape.color = Color{
-                static_cast<uint8_t>(GetRandomValue(0, 255)),
-                static_cast<uint8_t>(GetRandomValue(0, 255)),
-                static_cast<uint8_t>(GetRandomValue(0, 255)),
-                Settings::SHAPE_ALPHA
-            };
-        } break;
-
-        case ShapeType::Ellipse: {
-        } break;
-
-        case ShapeType::Square: {
-        } break;
-
-        case ShapeType::Rectangle: {
-            shape.type = ShapeType::Rectangle;
-
-            shape.data[0] = m_RNG.getRandomInt(m_originalImage.width - 1);
-            shape.data[1] = m_RNG.getRandomInt(m_originalImage.height - 1);
-            shape.data[2] = m_RNG.getRandomInt(10, Min(m_originalImage.width, m_originalImage.height) / 2);
-            shape.data[3] = m_RNG.getRandomInt(10, Min(m_originalImage.width, m_originalImage.height) / 2);
-
-            shape.dataSize = 4;
-
-            shape.color = Color{
-                static_cast<uint8_t>(GetRandomValue(0, 255)),
-                static_cast<uint8_t>(GetRandomValue(0, 255)),
-                static_cast<uint8_t>(GetRandomValue(0, 255)),
-                Settings::SHAPE_ALPHA
-            };
-        } break;
-
-        case ShapeType::Triangle: {
-            shape.type = ShapeType::Triangle;
-
-            shape.data[0] = GetRandomValue(0, m_originalImage.width);
-            shape.data[1] = GetRandomValue(0, m_originalImage.height);
-
-            shape.data[2] = GetRandomValue(0, m_originalImage.width);
-            shape.data[3] = GetRandomValue(0, m_originalImage.height);
-
-            shape.data[4] = GetRandomValue(0, m_originalImage.width);
-            shape.data[5] = GetRandomValue(0, m_originalImage.height);
-
-            shape.dataSize = 6;
-
-            shape.color = Color{
-                static_cast<uint8_t>(GetRandomValue(0, 255)),
-                static_cast<uint8_t>(GetRandomValue(0, 255)),
-                static_cast<uint8_t>(GetRandomValue(0, 255)),
-                Settings::SHAPE_ALPHA
-            };
-        } break;
-
-        case ShapeType::Line: {
-        } break;
-
-        case ShapeType::Curve: {
-        } break;
-    }
+    shape.randomize(m_imageSize, m_RNG, usableShapeTypes);
 
     return shape;
 }
